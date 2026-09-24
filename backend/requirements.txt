@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+PyMuPDF
+langchain
+langchain-google-genai
+sentence-transformers
+chromadb
+openai
+scikit-learn
+pandas
+python-multipart
+faster-whisper
