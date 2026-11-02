@@ -8,6 +8,7 @@ export const generatePDFReport = ({
   topicScores,
   studyPlan,
   totalQuestions,
+  eyeContactScore,
 }) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -40,15 +41,17 @@ export const generatePDFReport = ({
       3: { cellWidth: 55 },
     },
     body: [
-      ['Candidate Name:', candidateProfile.name || 'Candidate', 'Evaluation Date:', currentDate],
-      ['Target Role:', candidateProfile.targetRole || 'Software Engineer', 'Questions Completed:', `${history.length} of ${totalQuestions}`],
+      ['Candidate Name:', candidateProfile?.name || 'Candidate', 'Evaluation Date:', currentDate],
+      ['Target Role:', candidateProfile?.targetRole || 'Software Engineer', 'Questions Completed:', `${history.length} of ${totalQuestions}`],
       [
         'AI Predicted Score:',
         mlResult?.predicted_overall_score !== undefined
           ? `${Number(mlResult.predicted_overall_score).toFixed(1)} / 100`
           : 'Pending',
-        'Assessment Status:',
-        'COMPLETED (Verified)',
+        'Camera Eye Contact:',
+        eyeContactScore !== undefined && eyeContactScore !== null
+          ? `${Math.round(eyeContactScore)}% (Vision AI)`
+          : 'N/A (Audio Mode)',
       ],
     ],
   });
@@ -83,15 +86,15 @@ export const generatePDFReport = ({
   doc.text('2. Detailed Question Transcripts & AI Feedback', 14, doc.lastAutoTable.finalY + 10);
 
   const transcriptRows = history.map((item, idx) => {
-    const missed = item.evaluation.missing_concepts?.length > 0 
+    const missed = item.evaluation?.missing_concepts?.length > 0 
       ? `\nMissed Concepts: ${item.evaluation.missing_concepts.join(', ')}` 
       : '';
     return [
-      `Q${idx + 1} (${item.question.topic || 'General'})`,
-      item.question.question,
-      item.answer.length > 250 ? item.answer.substring(0, 250) + '...' : item.answer,
-      `${item.evaluation.score}/100`,
-      `${item.evaluation.feedback}${missed}`,
+      `Q${idx + 1} (${item.question?.topic || 'General'})`,
+      item.question?.question || '',
+      (item.answer || '').length > 250 ? item.answer.substring(0, 250) + '...' : (item.answer || ''),
+      `${item.evaluation?.score ?? 0}/100`,
+      `${item.evaluation?.feedback || ''}${missed}`,
     ];
   });
 
@@ -145,6 +148,6 @@ export const generatePDFReport = ({
   }
 
   // 7. Save file to client
-  const filename = `Interview_Assessment_${candidateProfile.name?.replace(/\s+/g, '_') || 'Report'}.pdf`;
+  const filename = `Interview_Assessment_${candidateProfile?.name?.replace(/\s+/g, '_') || 'Report'}.pdf`;
   doc.save(filename);
 };

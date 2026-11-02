@@ -103,8 +103,14 @@ export default function Home({ setCandidateProfile, setInterviewSettings }) {
       setMatchData(match);
       setStep(2);
     } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.detail || 'Failed to process data. Ensure backend is running.');
+      console.error("Error processing interview setup:", err);
+      const detail = err.response?.data?.detail;
+      const errorMsg = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+        ? detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+        : err.message || 'Failed to process data. Ensure backend is running.';
+      setError(errorMsg);
     } finally {
       setIsLoading(false);
     }
