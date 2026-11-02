@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { generateQuestion, evaluateAnswer, transcribeAudio, predictPerformance, generateStudyPlan } from '../api';
-import { Mic, Square, Send, Loader2, User, Bot, AlertCircle, Clock } from 'lucide-react';
+import { generateQuestion, probeOrEvaluateAnswer, transcribeAudio, predictPerformance, generateStudyPlan } from '../api';
+import { Mic, Square, Send, Loader2, User, Bot, AlertCircle, Clock, HelpCircle, Code } from 'lucide-react';
+import CodeSandbox from '../components/CodeSandbox';
 
 export default function Interview({ candidateProfile, interviewSettings }) {
   const navigate = useNavigate();
@@ -14,6 +15,17 @@ export default function Interview({ candidateProfile, interviewSettings }) {
   const [mlResult, setMlResult] = useState(null);
   const [studyPlan, setStudyPlan] = useState(null);
   const [topicScores, setTopicScores] = useState({});
+
+  // Upgrade 1: Probing Follow-Up State
+  const [probeQuestion, setProbeQuestion] = useState(null);
+  const [probeCount, setProbeCount] = useState(0);
+
+  // Upgrade 2: Real-Time Streaming State
+  const [streamingFeedback, setStreamingFeedback] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  // Upgrade 3: Live Monaco Coding Sandbox Toggle
+  const [showSandbox, setShowSandbox] = useState(false);
   
   const toggleSolution = (idx) => {
     setRevealedSolutions(prev => ({ ...prev, [idx]: !prev[idx] }));
@@ -22,7 +34,7 @@ export default function Interview({ candidateProfile, interviewSettings }) {
   // Advanced Settings from Plan
   const currentQIndex = history.length;
   const currentDifficulty = interviewSettings?.plan[currentQIndex] || 'intermediate';
-  const totalQuestions = interviewSettings?.plan.length || 1;
+  const totalQuestions = interviewSettings?.plan?.length || 1;
   const isFinished = currentQIndex >= totalQuestions;
   
   // Timer State
@@ -73,7 +85,11 @@ export default function Interview({ candidateProfile, interviewSettings }) {
   const fetchNextQuestion = async (targetDifficulty) => {
     setSessionState('initializing');
     setTextAnswer('');
-    setTimeLeft(interviewSettings.timeMap[targetDifficulty] * 60); // Reset timer for specific difficulty
+    setProbeQuestion(null);
+    setProbeCount(0);
+    setStreamingFeedback('');
+    setShowSandbox(false);
+    setTimeLeft(interviewSettings.timeMap[targetDifficulty] * 60);
     
     try {
       const q = await generateQuestion({
@@ -82,13 +98,13 @@ export default function Interview({ candidateProfile, interviewSettings }) {
         target_role: candidateProfile.targetRole,
         current_difficulty: targetDifficulty,
         previous_questions: history.map(h => h.question.question),
-        current_topic: candidateProfile.skills[currentQIndex % candidateProfile.skills.length] || "General"
+        current_topic: candidateProfile.skills[currentQIndex % candidateProfile.skills.length] || "General",
+        interviewer_persona: interviewSettings?.persona || "standard"
       });
       setCurrentQuestion(q);
       setSessionState('asking');
     } catch (err) {
       console.error("Full error object:", err);
-      console.error("Response data:", err.response?.data);
       alert(`Error fetching question: ${JSON.stringify(err.response?.data || err.message)}`);
     }
   };
@@ -136,21 +152,89 @@ export default function Interview({ candidateProfile, interviewSettings }) {
     }
   };
 
+  // Real-Time Token Streaming Helper (Upgrade 2)
+  const streamLiveFeedback = async (questionText, answerTextVal) => {
+    try {
+      setIsStreaming(true);
+      setStreamingFeedback('');
+      const response = await fetch("http://127.0.0.1:8000/api/evaluation/stream-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: questionText,
+          user_answer: answerTextVal,
+          expected_concepts: currentQuestion.expected_concepts,
+        }),
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.replace("data: ", "").trim();
+            if (dataStr === "[DONE]") break;
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.text) {
+                setStreamingFeedback((prev) => prev + parsed.text);
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Streaming error:", e);
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
   const handleSubmitAnswer = async (isTimeUp = false) => {
     if (!isTimeUp && !textAnswer.trim()) return;
     
     setSessionState('evaluating');
+    const answerSubmitted = textAnswer.trim() || "(Time expired, no answer provided)";
+
     try {
-      const evalResult = await evaluateAnswer({
-        question: currentQuestion.question,
-        user_answer: textAnswer.trim() || "No answer provided.",
+      // Trigger live streaming feedback in parallel
+      streamLiveFeedback(probeQuestion || currentQuestion.question, answerSubmitted);
+
+      // Call Probing or Evaluation Endpoint (Upgrade 1)
+      const res = await probeOrEvaluateAnswer({
+        question: probeQuestion ? `${currentQuestion.question} (Follow-up: ${probeQuestion})` : currentQuestion.question,
+        user_answer: answerSubmitted,
         expected_concepts: currentQuestion.expected_concepts,
-        current_difficulty: currentDifficulty
+        current_difficulty: currentDifficulty,
+        probe_count: probeCount
       });
+
+      // If the AI wants to probe deeper
+      if (res.is_follow_up && res.follow_up_question) {
+        setProbeQuestion(res.follow_up_question);
+        setProbeCount(prev => prev + 1);
+        setTextAnswer(''); // Clear input for the follow-up response
+        setSessionState('asking');
+        return;
+      }
+
+      // Final Evaluation Completed
+      const evalResult = {
+        score: res.score ?? 70,
+        feedback: res.feedback || "Good technical attempt.",
+        missing_concepts: res.missing_concepts || [],
+        next_difficulty: res.next_difficulty || currentDifficulty
+      };
 
       const newHistory = [...history, {
         question: currentQuestion,
-        answer: textAnswer.trim() || "(Time expired, no answer provided)",
+        answer: probeQuestion ? `Initial + Follow-up: ${answerSubmitted}` : answerSubmitted,
         evaluation: evalResult
       }];
       setHistory(newHistory);
@@ -176,7 +260,7 @@ export default function Interview({ candidateProfile, interviewSettings }) {
           const mlRes = await predictPerformance({
             avg_tech_score: avg_tech_score,
             avg_coverage: avg_coverage,
-            filler_rate: 2.0 // Fallback/default if we don't track perfectly per question
+            filler_rate: 2.0
           });
           setMlResult(mlRes);
         } catch (e) {
@@ -185,17 +269,16 @@ export default function Interview({ candidateProfile, interviewSettings }) {
 
         // 3. Generate Study Plan
         try {
-          // Calculate scores per topic
-          const topicScores = {};
-          const topicCounts = {};
+          const tScores = {};
+          const tCounts = {};
           newHistory.forEach(item => {
             const t = item.question.topic;
-            topicScores[t] = (topicScores[t] || 0) + item.evaluation.score;
-            topicCounts[t] = (topicCounts[t] || 0) + 1;
+            tScores[t] = (tScores[t] || 0) + item.evaluation.score;
+            tCounts[t] = (tCounts[t] || 0) + 1;
           });
           const avgTopicScores = {};
-          for (const t in topicScores) {
-            avgTopicScores[t] = topicScores[t] / topicCounts[t];
+          for (const t in tScores) {
+            avgTopicScores[t] = tScores[t] / tCounts[t];
           }
           setTopicScores(avgTopicScores);
           setStudyPlan('loading');
@@ -308,7 +391,7 @@ export default function Interview({ candidateProfile, interviewSettings }) {
             <div className="mt-4 pt-4 border-t border-green-200/50">
               <button 
                 onClick={() => toggleSolution(idx)}
-                className="text-sm font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                className="text-sm font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors cursor-pointer"
               >
                 {revealedSolutions[idx] ? 'Hide' : 'View'} Ideal Solution
               </button>
@@ -390,7 +473,7 @@ export default function Interview({ candidateProfile, interviewSettings }) {
             </div>
             
             <br />
-            <button onClick={() => window.location.reload()} className="mt-8 bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 shadow-sm transition-colors text-lg">
+            <button onClick={() => window.location.reload()} className="mt-8 bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 shadow-sm transition-colors text-lg cursor-pointer">
               Start New Interview
             </button>
           </div>
@@ -432,9 +515,19 @@ export default function Interview({ candidateProfile, interviewSettings }) {
               <p className="text-gray-500">The AI is analyzing your profile and formulating a {currentDifficulty} question...</p>
             </div>
           ) : sessionState === 'evaluating' ? (
-            <div className="flex flex-col items-center justify-center py-10">
+            <div className="flex flex-col items-center justify-center py-8">
               <Loader2 className="w-10 h-10 text-purple-500 animate-spin mb-4" />
-              <p className="text-gray-500">Evaluating your answer against expected concepts...</p>
+              <p className="text-gray-700 font-medium mb-3">Analyzing answer & evaluating reasoning...</p>
+              
+              {/* Real-Time Live Streaming Output (Upgrade 2) */}
+              {streamingFeedback && (
+                <div className="w-full max-w-2xl bg-purple-50 border border-purple-200 p-4 rounded-xl text-left text-sm text-purple-900 leading-relaxed shadow-inner">
+                  <span className="font-bold block mb-1 text-purple-800 flex items-center gap-1.5">
+                    <Bot className="w-4 h-4 text-purple-600" /> Live AI Feedback Stream:
+                  </span>
+                  <p className="whitespace-pre-wrap">{streamingFeedback}</p>
+                </div>
+              )}
             </div>
           ) : sessionState === 'transcribing' ? (
              <div className="flex flex-col items-center justify-center py-10">
@@ -443,7 +536,8 @@ export default function Interview({ candidateProfile, interviewSettings }) {
             </div>
           ) : (
             <>
-              <div className="mb-6 flex gap-4 items-start">
+              {/* Current Technical Question */}
+              <div className="mb-4 flex gap-4 items-start">
                 <div className="bg-blue-100 p-3 rounded-full flex-shrink-0">
                   <Bot className="w-6 h-6 text-blue-600" />
                 </div>
@@ -453,22 +547,49 @@ export default function Interview({ candidateProfile, interviewSettings }) {
                 </div>
               </div>
 
+              {/* Upgrade 1: Probing Follow-Up Banner */}
+              {probeQuestion && (
+                <div className="p-4 mb-4 bg-amber-50 border-l-4 border-amber-500 rounded-lg text-amber-900 shadow-sm flex items-start gap-3 animate-fade-in">
+                  <HelpCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block text-sm mb-0.5 text-amber-950">Interviewer Follow-Up Question:</span>
+                    <p className="text-sm leading-relaxed">{probeQuestion}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Upgrade 3: Live In-Browser Code Sandbox Button */}
+              <div className="mb-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowSandbox(!showSandbox)}
+                  className="text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Code className="w-3.5 h-3.5 text-blue-600" />
+                  {showSandbox ? 'Hide Coding Sandbox' : 'Open Coding Sandbox'}
+                </button>
+              </div>
+
+              {/* Live Coding Sandbox Component */}
+              {showSandbox && <CodeSandbox />}
+
+              {/* Answer Text Area & Audio Mic */}
               <div className="relative">
                 <textarea
                   value={textAnswer}
                   onChange={(e) => setTextAnswer(e.target.value)}
-                  placeholder="Type your answer here, or click the microphone to speak..."
-                  className="w-full border border-gray-300 rounded-xl p-4 min-h-[150px] outline-none focus:ring-2 focus:ring-blue-500 resize-none pr-14"
+                  placeholder={probeQuestion ? "Provide your follow-up explanation here, or click mic to speak..." : "Type your answer here, or click the microphone to speak..."}
+                  className="w-full border border-gray-300 rounded-xl p-4 min-h-[140px] outline-none focus:ring-2 focus:ring-blue-500 resize-none pr-14 text-sm"
                 />
                 
                 {/* Audio Recording Controls */}
                 <div className="absolute bottom-4 right-4 flex gap-2">
                   {isRecording ? (
-                    <button onClick={stopRecording} className="bg-red-500 hover:bg-red-600 text-white p-3 rounded-full shadow-lg flex items-center gap-2 animate-pulse">
+                    <button onClick={stopRecording} className="bg-red-500 hover:bg-red-600 text-white p-3 rounded-full shadow-lg flex items-center gap-2 animate-pulse cursor-pointer">
                       <Square className="w-5 h-5 fill-current" /> Stop
                     </button>
                   ) : (
-                    <button onClick={startRecording} className="bg-gray-100 hover:bg-gray-200 text-gray-700 p-3 rounded-full transition-colors" title="Answer with voice">
+                    <button onClick={startRecording} className="bg-gray-100 hover:bg-gray-200 text-gray-700 p-3 rounded-full transition-colors cursor-pointer" title="Answer with voice">
                       <Mic className="w-5 h-5" />
                     </button>
                   )}
@@ -482,9 +603,9 @@ export default function Interview({ candidateProfile, interviewSettings }) {
                 <button
                   onClick={() => handleSubmitAnswer(false)}
                   disabled={!textAnswer.trim() || isRecording}
-                  className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer shadow-sm"
                 >
-                  Submit Answer <Send className="w-4 h-4" />
+                  {probeQuestion ? 'Submit Follow-up' : 'Submit Answer'} <Send className="w-4 h-4" />
                 </button>
               </div>
             </>

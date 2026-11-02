@@ -20,7 +20,6 @@ export const generateQuestion = async (data) => {
 
 export const transcribeAudio = async (audioBlob) => {
   const formData = new FormData();
-  // Provide a default filename so FastAPI FileUpload correctly detects it as a file
   formData.append('audio_file', audioBlob, 'recording.webm');
   const response = await api.post('/interview/transcribe', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -30,6 +29,11 @@ export const transcribeAudio = async (audioBlob) => {
 
 export const evaluateAnswer = async (data) => {
   const response = await api.post('/evaluation/evaluate', data);
+  return response.data;
+};
+
+export const probeOrEvaluateAnswer = async (data) => {
+  const response = await api.post('/evaluation/probe-evaluate', data);
   return response.data;
 };
 

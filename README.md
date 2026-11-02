@@ -1,100 +1,86 @@
-# AI Interview Preparation & Evaluation System
+# 🚀 AI-Powered Adaptive Interview Preparation & Evaluation System
 
-A full-stack, AI-driven mock interview simulator that dynamically blends a candidate's resume and a target job description to generate highly contextual, multi-level technical interview questions, complete with real-time speech-to-text, machine learning performance prediction, and personalized study plans.
-
----
-
-## 🛠️ Tech Stack
-- **Frontend:** React (Vite), Tailwind CSS v4, Axios
-- **Backend:** FastAPI (Python), Uvicorn, LangChain
-- **AI Models:** 
-  - `gemini-3.5-flash-lite` (Question Generation, Resume Parsing, Study Plan Generation)
-  - `faster-whisper` (Local Speech-to-Text Audio Transcription)
-  - `scikit-learn` Random Forest (Local ML Performance Prediction)
-- **Vector Database:** ChromaDB (Local RAG for context)
+An enterprise-grade, full-stack mock interview platform that dynamically blends a candidate's resume with target Job Descriptions to generate contextual technical challenges, multi-turn conversational probing, in-browser code execution, real-time audio analysis, and personalized 7-day remediation roadmaps.
 
 ---
 
-## 🚀 How to Run the Project (Local Execution)
+## 🌟 Key Features & Architectural Upgrades
 
-Follow these steps to run the project locally on your machine.
+### 1. 🎭 Company-Specific Interviewer Personas
+- **Google "Bar Raiser":** Evaluates high-concurrency systems, low latency, $O(N)$ algorithmic optimization, and extreme distributed edge cases.
+- **Amazon Bar Raiser:** Probes through the lens of Amazon's 16 Leadership Principles and the STAR behavioral method.
+- **Y-Combinator Startup CTO:** Emphasizes pragmatic delivery speed, production debugging, developer velocity, and business trade-offs.
+- **Standard Senior Architect:** Balanced technical and system design evaluation.
+
+### 2. 🔄 Multi-Turn Conversational Probing (Follow-Up Agent)
+- Real interviewers don't just grade and move on. If a candidate provides a brief or buzzword-heavy answer, the AI detects the lack of depth and poses a targeted follow-up question before scoring.
+
+### 3. ⚡ Real-Time Token Streaming (Server-Sent Events)
+- Sub-second Time-to-First-Token (TTFT). Constructive evaluation feedback streams live token-by-token directly to the screen using FastAPI's asynchronous generators.
+
+### 4. 💻 In-Browser Python 3 WebAssembly Sandbox (Monaco Editor)
+- Embedded VS Code editor (**Monaco**) paired with **Pyodide (WebAssembly)**. Candidates can write and execute Python code directly inside their browser with **$0 server compute overhead** and zero latency.
+
+### 5. 🎙️ Local Quantized Speech-to-Text (CTranslate2 Faster-Whisper)
+- Audio is transcribed locally on CPU using 8-bit quantized Whisper weights. Zero voice recordings are leaked to external cloud APIs, with automatic speech disfluency analysis (filler words like *um*, *uh*, *like*).
+
+### 6. 📊 Machine Learning Regressor & Diagnostic PDF Export
+- Scikit-learn **Random Forest Regressor** predicts an empirical hiring performance score based on multi-variate metrics.
+- **1-Click PDF Report Generation:** Instantly downloads a formal, branded Diagnostic Performance Report detailing matched competencies, question transcripts, topic weaknesses, and a 7-day personalized study plan.
+
+---
+
+## 🛠️ Complete Technology Stack
+
+| Layer | Technologies | Architectural Purpose |
+| :--- | :--- | :--- |
+| **Frontend** | React 18, Vite, Tailwind CSS v4, Monaco Editor | Reactive SPA, client-side WebAssembly code execution, responsive UI. |
+| **Backend** | FastAPI, Uvicorn (ASGI), Pydantic v2 | High-throughput async non-blocking REST API and Server-Sent Events. |
+| **AI Orchestration** | LangChain, Google Gemini 3.5 Flash-Lite | Context-aware question generation, structured schema parsing, and CoT grading. |
+| **Embeddings & RAG** | SentenceTransformers (`all-MiniLM-L6-v2`), ChromaDB | 384-dimensional dense semantic skill-matching and local vector knowledge grounding. |
+| **Speech & ML** | Faster-Whisper (int8 CPU), Scikit-Learn | Local speech-to-text audio processing and multi-variate Random Forest scoring. |
+| **Reporting & DevOps** | jsPDF, ReportLab, Docker Compose | Client-side diagnostic PDF export, containerized deployment, and technical documentation. |
+
+---
+
+## 🚀 Local Quickstart Guide
 
 ### 1. Prerequisites
-- **Python 3.10+** (Required for the backend)
-- **Node.js 18+** (Required for the frontend)
-- A **Google Gemini API Key** (Get one from [Google AI Studio](https://aistudio.google.com/))
+- **Python 3.10+**
+- **Node.js 18+**
+- **Google Gemini API Key** (Free from [Google AI Studio](https://aistudio.google.com/))
 
 ### 2. Backend Setup
-Open a terminal and navigate to the `backend` directory:
 ```bash
-cd "AI Interview Preparation & Evaluation System/backend"
-```
-
-**Step 2a: Create a Virtual Environment**
-```bash
+cd backend
 python -m venv venv
-```
-Activate it:
-- Windows: `.\venv\Scripts\activate`
-- Mac/Linux: `source venv/bin/activate`
-
-**Step 2b: Install Dependencies**
-```bash
+# Windows: .\venv\Scripts\activate | Mac/Linux: source venv/bin/activate
 pip install -r requirements.txt
-pip install google-generativeai langchain-google-genai
 ```
 
-**Step 2c: Configure Environment Variables**
-Create a `.env` file in the `backend/` folder and add your Gemini API Key:
+Create a `.env` file in `backend/`:
 ```env
-GEMINI_API_KEY=your_actual_api_key_here
+GEMINI_API_KEY=your_actual_gemini_api_key_here
 ```
 
-**Step 2d: Start the Backend Server**
+Start Backend Server:
 ```bash
 uvicorn app.main:app --reload
 ```
-*The backend API will now be running on `http://127.0.0.1:8000`*
-
----
+*API running at `http://127.0.0.1:8000` (Interactive Swagger docs at `http://127.0.0.1:8000/docs`)*
 
 ### 3. Frontend Setup
-Open a **new** terminal and navigate to the `frontend` directory:
+Open a new terminal:
 ```bash
-cd "AI Interview Preparation & Evaluation System/frontend"
-```
-
-**Step 3a: Install Dependencies**
-```bash
+cd frontend
 npm install
-```
-
-**Step 3b: Start the React Development Server**
-*(Note for Windows users: If your project path contains special characters like `&`, the standard `npm run dev` might fail. Use the Node binary directly as shown below).*
-```bash
 node node_modules/vite/bin/vite.js
 ```
-*The frontend UI will now be running on `http://localhost:5174`*
+*Frontend running at `http://localhost:5173`*
 
 ---
 
-## 🎯 How to Use the Application
-
-1. **Upload Resume & JD:** Open `http://localhost:5174` in your browser. Upload your Resume (PDF), type your target role, and paste the target Job Description.
-2. **Match Score:** The AI will parse both documents and present an exact match percentage, highlighting your strengths and missing skills.
-3. **Configure Interview:** Choose the difficulty mix (Easy, Intermediate, Hard), set the number of questions, and allocate a time limit for each.
-4. **Take the Interview:** The AI will generate completely unique questions blended from your resume and the JD. You can type your answer or click the **Microphone** to record your voice.
-5. **Real-time Feedback:** As you submit each answer, the AI evaluates your response out of 100, highlights missed concepts, and allows you to view the "Ideal Model Answer".
-6. **Final Report:** Once the interview finishes, the local ML model predicts your real-world overall score, breaks down your Strong/Weak areas, and generates a personalized 7-Day Study Plan!
-
----
-
-## 🐳 Optional: Running with Docker
-If you prefer containerization, you can run the entire stack using Docker Compose.
-
-Make sure you have inserted your `.env` variables, then run:
-```bash
-docker-compose up --build
-```
-- Backend will be on `http://localhost:8000`
-- Frontend will be on `http://localhost:3000`
+## 🔒 Privacy & Architecture Invariants
+- **Zero Cloud Audio Leakage:** All speech recognition runs locally via CTranslate2 on the host machine.
+- **Deterministic Schema Enforcing:** All LLM boundaries are enforced with strict Pydantic parsers to prevent runtime hallucination crashes.
+- **Decoupled Quantitative Scoring:** Separates generative qualitative feedback from statistical Random Forest regression to eliminate buzzword bias.
